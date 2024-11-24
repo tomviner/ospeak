@@ -6,13 +6,14 @@ from openai import OpenAI, NotFoundError
 from pydub import AudioSegment
 from pydub.playback import play
 
+from .splitter import text_splitter
+
 VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
 
+# OpenAI's TTS API has a limit of 4096 characters per request
+MAX_CHARS = 4096
 
-def stream_and_play(
-    text, voice="alloy", model="tts-1", speed=1.0, speak=True, api_key=None, output=None
-):
-    client = OpenAI(api_key=api_key)
+def generate_audio_chunk(client, model, voice, speed, text):
     try:
         response = client.audio.speech.create(
             model=model,
@@ -28,14 +29,33 @@ def stream_and_play(
         raise click.ClickException(details)
 
     byte_stream = io.BytesIO(response.content)
-    audio = AudioSegment.from_file(byte_stream, format="mp3")
-    # Doesn't output ffmpeg info provided simpleaudio is installed:
-    if speak:
-        play(audio)
+    return AudioSegment.from_file(byte_stream, format="mp3")
+
+def generate_audio(api_key, model, voice, speed, text):
+    client = OpenAI(api_key=api_key)
+
+    text_chunks = text_splitter(text, chunk_size=MAX_CHARS)
+    if len(text_chunks) > 1:
+        print(f'Splitting text into {len(text_chunks)} chunks', file=sys.stderr)
+
+    for text_chunk in text_chunks:
+        yield generate_audio_chunk(client, model, voice, speed, text_chunk)
+
+def stream_and_play(
+    text, voice="alloy", model="tts-1", speed=1.0, speak=True, api_key=None, output=None
+):
+    combined_audio = AudioSegment.empty()
+    for audio_chunk in generate_audio(api_key, model, voice, speed, text):
+        # Doesn't output ffmpeg info provided simpleaudio is installed:
+        if speak:
+            play(audio_chunk)
+        if output:
+            combined_audio += audio_chunk
+
     if output:
         format = output.rsplit(".", 1)[-1]
         bitrate = "160k" if format == "mp3" else None  # we get 160k from the API
-        audio.export(output, format=format, bitrate=bitrate)
+        combined_audio.export(output, format=format, bitrate=bitrate)
 
 
 @click.command()
