@@ -13,6 +13,7 @@ VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
 # OpenAI's TTS API has a limit of 4096 characters per request
 MAX_CHARS = 4096
 
+
 def generate_audio_chunk(client, model, voice, speed, text):
     try:
         response = client.audio.speech.create(
@@ -31,15 +32,17 @@ def generate_audio_chunk(client, model, voice, speed, text):
     byte_stream = io.BytesIO(response.content)
     return AudioSegment.from_file(byte_stream, format="mp3")
 
+
 def generate_audio(api_key, model, voice, speed, text):
     client = OpenAI(api_key=api_key)
 
     text_chunks = text_splitter(text, chunk_size=MAX_CHARS)
     if len(text_chunks) > 1:
-        print(f'Splitting text into {len(text_chunks)} chunks', file=sys.stderr)
+        print(f"Splitting text into {len(text_chunks)} chunks", file=sys.stderr)
 
     for text_chunk in text_chunks:
         yield generate_audio_chunk(client, model, voice, speed, text_chunk)
+
 
 def stream_and_play(
     text, voice="alloy", model="tts-1", speed=1.0, speak=True, api_key=None, output=None

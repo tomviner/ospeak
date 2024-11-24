@@ -1,10 +1,12 @@
-from ospeak.splitter import text_splitter
+from ospeak.splitter import text_splitter, SEPARATORS
+import hypothesis.strategies as st
+from hypothesis import given, example
 
 
 def test_default_separators():
     text = "Hello\n\nWorld\nHow are you?"
     result = text_splitter(text, chunk_size=12)
-    expected = ["Hello", "World", "How are you?"]
+    expected = ["Hello\n\n", "World\n", "How are you?"]
     assert result == expected
 
 
@@ -30,35 +32,24 @@ def test_no_splits():
 
 
 def test_split_sentences_short_first():
-    text = (
-        "Sure. This is a long text that should be split into smaller chunks based"
-        " on the specified chunk size."
-    )
-    result = text_splitter(text, chunk_size=20)
+    text = "Short. A medium sentence going next. And a final sentence."
+    result = text_splitter(text, chunk_size=21)
     assert result == [
-        'Sure.',
-        'This is a long text',
-        'that should be',
-        'split into smaller',
-        'chunks based on the',
-        'specified chunk',
-        'size.',
+        "Short. ",
+        "A medium sentence ",
+        "going next. ",
+        "And a final sentence.",
     ]
 
 
 def test_split_sentences_short_second():
-    text = (
-        "This is a long text that should be split into smaller chunks based"
-        " on the specified chunk size. Sure."
-    )
-    result = text_splitter(text, chunk_size=20)
+    text = "A medium sentence going first. And a next sentence. Short. "
+    result = text_splitter(text, chunk_size=21)
     assert result == [
-        'This is a long text',
-        'that should be',
-        'split into smaller',
-        'chunks based on the',
-        'specified chunk',
-        'size. Sure.',
+        "A medium sentence ",
+        "going first. ",
+        "And a next sentence. ",
+        "Short. ",
     ]
 
 
@@ -73,10 +64,28 @@ def test_nested_splitting():
     text = "Chapter 1\n\nParagraph 1.\nParagraph 2.\n\nChapter 2\n\nParagraph 3."
     result = text_splitter(text, chunk_size=20)
     expected = [
-        "Chapter 1",
-        "Paragraph 1.",
-        "Paragraph 2.",
-        "Chapter 2",
+        "Chapter 1\n\n",
+        "Paragraph 1.\n",
+        "Paragraph 2.\n\n",
+        "Chapter 2\n\n",
         "Paragraph 3.",
     ]
     assert result == expected
+    assert "".join(result) == text
+
+
+@given(
+    text=st.text(min_size=0, max_size=1000),
+    chunk_size=st.integers(min_value=1, max_value=100),
+)
+@example("Hello\n\nWorld\nHow are you?", 12)
+def test_split_roundtrip(text, chunk_size):
+    result = text_splitter(text, chunk_size=chunk_size)
+    assert "".join(result) == text
+    max_sep_len = 2
+    for chunk in result:
+        within_chunk_size = len(chunk) <= chunk_size
+        contains_separator = any(sep in chunk[:-1] for sep in SEPARATORS)
+        assert (
+            within_chunk_size or not contains_separator
+        ), f"chunk: {chunk!r}, chunk_size: {chunk_size}, result: {result!r}"
